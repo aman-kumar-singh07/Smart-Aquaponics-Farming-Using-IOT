@@ -1,0 +1,208 @@
+#define DEBUG true
+#include<LiquidCrystal.h>
+LiquidCrystal lcd(10,9,8,7,6,5);
+#include<SoftwareSerial.h>
+SoftwareSerial Serial1(2,3);
+#include"dht.h"
+dht DHT;
+#define dht_dpin 12
+String ip="192.168.4.2";
+String port="1234";
+String atTcpPortConnectCmd = "AT+CIPSTART=\"TCP\",\""+ip+"\","+port+"";
+int serverFlag=0 ;
+#define soil_rly 11
+#define LDR A0
+#define S_Sensor A2
+#define R_Sensor A3
+#define buzzer 13
+#define led 4
+const int RainMin = 0;
+const int RainMax = 1024;
+void setup()
+{
+Serial.begin(9600); ///////For Serial monitor
+Serial1.begin(115200); ///////ESP Baud rate
+lcd.begin(16,2);
+lcd.print("Smart Farm");
+delay(2000);
+lcd.clear();
+lcd.print("WiFi Initlizing");
+sendData("AT+RST\r\n",2000,DEBUG); //reset module
+sendData("AT+CWMODE=3\r\n",1000,DEBUG); // configure as access point
+// delay(5000);
+sendData("AT+CIFSR\r\n",1000,DEBUG); // get ip address
+sendData("AT+CIPMODE=1\r\n",1000,DEBUG); // turn on server on port 80
+sendData("AT+CIPMUX=0\r\n",1000,DEBUG); // configure for multiple connections
+//sendData("AT+CIPSTART=atTcpPortConnectCmd,80\r\n",1000,DEBUG); // turn on server
+//on port 80
+//dht.begin();
+pinMode(soil_rly, OUTPUT);
+pinMode(buzzer, OUTPUT);
+pinMode(led,OUTPUT);
+lcd.clear();
+lcd.print("System Ready");
+delay(1000);
+}
+int connectToServer(String cmd, int t)
+{
+String str="";
+Serial1.println(cmd);
+delay(2000);
+while(Serial1.available())
+{
+char ch=Serial1.read();
+str+=ch;
+}
+Serial.println(str);
+if(str.indexOf("CONNECTED")>=0)
+{
+Serial1.println("AT+CIPSEND");
+delay(1000);
+Serial1.println("Server Connected");
+serverFlag=1;
+lcd.clear();
+lcd.print("Server Connected");
+delay(1000);
+}
+else
+{
+lcd.clear();
+lcd.print("Failed ");
+delay(1000);
+}
+}
+void loop()
+{
+// reading();
+if(serverFlag)
+{
+Serial1.println("SMART WIFI BASED FARMING\r\n");
+reading();
+}
+else
+{
+lcd.clear();
+lcd.print("Connecting with ");
+lcd.setCursor(0,1);
+lcd.print("Server. ... ");
+delay(1000);
+connectToServer(atTcpPortConnectCmd,1000); // turn on server on port 80
+}
+}
+void reading()
+{
+lcd.begin(16,2);
+int Rain_Reading = analogRead(R_Sensor);
+int range = map(Rain_Reading, RainMin, RainMax, 0, 3);
+lcd.clear();
+lcd.print("Rain Reading");
+lcd.print(Rain_Reading);
+lcd.clear();//
+Serial.print("Rain Reading:");
+Serial.println(Rain_Reading);
+switch (range)
+{
+lcd.setCursor(0,1);
+case 0:
+lcd.print("Raining");
+Serial.println("RAINING");
+Serial1.println("RAINING");
+digitalWrite(buzzer, HIGH);
+break;
+case 1:
+lcd.print("Rain Warning");
+Serial.println("RAIN WARNING");
+Serial1.println("RAIN WARNING");
+digitalWrite(buzzer, HIGH);
+break;
+case 2:
+lcd.print("Not Raining");
+Serial.println("NOT RAINING");
+Serial1.println("NOT RAINING");
+digitalWrite(buzzer, LOW);
+break;
+}
+delay(1000);
+int Soil_Reading = analogRead(S_Sensor);
+Soil_Reading = map(Soil_Reading, 0, 1024, 100, 1);
+if(Soil_Reading<40)
+digitalWrite(soil_rly, HIGH);
+else
+digitalWrite(soil_rly, LOW);
+lcd.clear();
+lcd.print("Moisture:");
+lcd.print(Soil_Reading);
+lcd.print("% ");
+Serial.print("Mositure : ");
+Serial.print(Soil_Reading);
+Serial.println("%");
+Serial1.print("Mositure : ");
+Serial1.print(Soil_Reading);
+Serial1.println("%");
+delay(1000);
+int LDR_Reading = analogRead(LDR);
+lcd.clear();
+if(LDR_Reading<1000)
+{
+lcd.print("NORMAL LIGHT");
+Serial.println("NORMAL LIGHT");
+digitalWrite(led,LOW);
+Serial1.println("NORMAL LIGHT");
+}
+else
+{
+lcd.print(" LOW LIGHT");
+Serial.println("LOW LIGHT");
+Serial1.println("LOW LIGHT");
+digitalWrite(led,HIGH);
+}
+lcd.setCursor(0,1);
+lcd.print("LDR:");
+lcd.print(LDR_Reading);
+Serial.print("LDR : ");
+Serial.println(LDR_Reading);
+Serial1.print("LDR : ");
+Serial1.println(LDR_Reading);
+lcd.print(" ");
+delay(1000);
+DHT.read11(dht_dpin);
+float h = DHT.humidity;
+lcd.clear();
+lcd.print("Humidity:");
+lcd.print(h);
+lcd.print("% ");
+Serial.print("Humidity : ");
+Serial.println(h);
+Serial1.print("Humidity : ");
+Serial1.println(h);
+float t = DHT.temperature; // Read temperature as Celsius (the default)
+lcd.setCursor(0,1);
+lcd.print("Temperature:");
+lcd.print(t);
+lcd.print("*C ");
+Serial.print("Temperature : ");
+Serial.println(t);
+Serial1.print("Temperature : ");
+Serial1.println(t);
+delay(1000);
+}
+String sendData(String command, const int timeout, boolean debug)
+{
+String response = "";
+Serial1.print(command);
+long int time = millis();
+while( (time+timeout) > millis())
+{
+while(Serial1.available())
+{
+char c = Serial1.read(); // read the next character.
+response+=c;
+}
+if(debug)
+{
+Serial.print(response); //displays the esp response messages in arduino Serial
+monitor
+}
+return response;
+}
+///////////////////////////////////////////////////////////////////////////////////////
